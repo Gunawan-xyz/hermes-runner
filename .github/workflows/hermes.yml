@@ -128,11 +128,18 @@ jobs:
       # 5. Jalankan gateway Hermes di latar belakang (chat dari HP via Telegram)
       - name: Jalankan gateway Hermes
         run: |
+          # Installer atau langkah lain bisa sudah menyalakan gateway host
+          # dengan config lama (kejadian run uji keenam: gateway lain sudah
+          # melayani profil default lebih dulu). Restart memaksa gateway
+          # membaca config dan env sesi ini; start sesudahnya hanya berjaga
+          # bila belum ada gateway yang jalan.
+          hermes -p default gateway restart || true
+          sleep 3
           nohup hermes gateway > "$HOME/hermes-gateway.log" 2>&1 &
           echo "Gateway dimulai, pid $!"
           sleep 10
-          if kill -0 $! 2>/dev/null; then echo "Gateway masih hidup setelah 10 detik."; else echo "PERINGATAN: gateway mati dalam 10 detik pertama."; fi
           tail -15 "$HOME/hermes-gateway.log" || true
+          ps aux | grep -i "[h]ermes gateway" | head -3 || true
 
       # 6. Backup berkala tiap 30 menit di latar belakang
       - name: Mulai loop backup berkala
