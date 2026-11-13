@@ -33,6 +33,7 @@ keadaan terakhir di mesin yang selalu baru.
 | `SUPABASE_KEY` | Kunci akses Supabase (service role) |
 | `OPENCODE_API_KEY` | Kunci OpenCode Zen untuk model Hermes |
 | `TELEGRAM_BOT_TOKEN` | Token bot Telegram untuk gateway (opsional, untuk chat dari HP) |
+| `TELEGRAM_USER_ID` | ID numerik Telegram pemilik; hanya user ini yang dilayani bot |
 
 Tidak ada nilai kredensial yang boleh ditulis di berkas repo ini.
 

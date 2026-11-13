@@ -19,3 +19,5 @@ model:
 gateway:
   telegram:
     enabled: true
+    # Hanya user ini yang dilayani bot (dari Secret TELEGRAM_USER_ID)
+    allowed_user_id: "__ISI_DARI_SECRET_TELEGRAM_USER_ID__"
