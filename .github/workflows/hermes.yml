@@ -124,6 +124,39 @@ jobs:
           hermes config set model.api_mode "" || true
           echo "== model yang berlaku =="
           grep -A 6 '^model:' ~/.hermes/config.yaml || true
+          # Jalur API key OpenCode (permintaan Awan 13 Nov malam): key dari
+          # secret OPENCODE_API_KEY ditulis ke ~/.hermes/.env dengan nama
+          # yang dicari provider Hermes (opencode-zen / opencode-go).
+          # Nilainya tidak pernah dicetak ke log.
+          touch ~/.hermes/.env
+          sed -i '/^OPENCODE_ZEN_API_KEY=/d; /^OPENCODE_GO_API_KEY=/d' ~/.hermes/.env
+          if [ -n "$OPENCODE_API_KEY" ] && [ "$OPENCODE_API_KEY" != "BELUM_DIISI" ]; then
+            echo "OPENCODE_ZEN_API_KEY=$OPENCODE_API_KEY" >> ~/.hermes/.env
+            echo "OPENCODE_GO_API_KEY=$OPENCODE_API_KEY" >> ~/.hermes/.env
+            echo "API key OpenCode ditulis ke .env (isi tidak ditampilkan)"
+          else
+            echo "OPENCODE_API_KEY kosong/placeholder, jalur API key dilewati"
+          fi
+          # Rantai fallback (dok resmi Hermes: fallback_providers di
+          # config.yaml): 1) opencode-zen model yang sama lewat API key
+          # (jalan berbeda dari jembatan ACP), 2) ACP dengan model GLM
+          # (jalan yang sama, model berbeda, seperti /model manual Awan).
+          # Ditulis PALING AKHIR di langkah ini supaya tidak tertimpa
+          # config set di atas; penjaga grep membuatnya idempotent.
+          if ! grep -q '^fallback_providers:' ~/.hermes/config.yaml; then
+            cat >> ~/.hermes/config.yaml <<'YAML'
+
+          fallback_providers:
+            - provider: opencode-zen
+              model: deepseek-v4.1-flash-free
+            - provider: opencode-free-acp
+              model: opencode/glm-5.3-flash-free
+          YAML
+            echo "fallback_providers ditulis ke config.yaml"
+          else
+            echo "fallback_providers sudah ada, tidak diubah"
+          fi
+          hermes fallback list || true
 
       # 3d. Setujui pairing Telegram (hanya bila dispatch membawa kode):
       #     bot Hermes memakai gerbang pairing, bukan allowlist statis.
@@ -138,6 +171,17 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
           hermes pairing approve telegram "$PAIRING_CODE"
+
+      # 3e. Uji jalur API key dari IP runner (diagnostik, TIDAK menggagalkan
+      #     run): dari jaringan Lyra jalur ini kena batas pemakaian gratis
+      #     (HTTP 429 FreeUsageLimitError), jadi bukti penentunya adalah hasil
+      #     check --live dari mesin runner sendiri, tercatat di log sesi.
+      - name: Uji jalur API key OpenCode (diagnostik)
+        continue-on-error: true
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+          set -a; [ -f ~/.hermes/.env ] && . ~/.hermes/.env; set +a
+          hermes fallback check --live || true
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
