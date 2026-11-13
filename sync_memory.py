@@ -82,7 +82,13 @@ def pull():
 # tidak boleh ikut backup (run uji ketiga: zip membengkak, upload ditolak
 # Supabase HTTP 400). Nama generik menutup variasi tata letak antar versi.
 SKIP_DIRS = {"hermes-agent", "venv", ".venv", "node_modules", ".git",
-             "__pycache__", ".cache"}
+             "__pycache__", ".cache",
+             # Folder aplikasi/cache versi installer git (terukur di run uji
+             # keempat: tools 1790 MB, cache 644 MB, installs 371 MB,
+             # bin 46 MB). Yang disimpan hanya state: config, .env, db,
+             # sessions, memories, skills, plugins, cron, hooks, pairing.
+             "tools", "cache", "installs", "bin", "audio_cache",
+             "image_cache", "logs", "sandboxes"}
 
 
 def build_zip(zip_path):
@@ -94,6 +100,10 @@ def build_zip(zip_path):
         for root, dirs, files in os.walk(HERMES_DIR):
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
             for fn in files:
+                # Berkas kunci/pid proses yang sedang jalan tidak boleh
+                # ikut: salinan basi bisa mengunci gateway sesi berikutnya.
+                if fn.endswith(".lock") or fn == "gateway.pid":
+                    continue
                 full = os.path.join(root, fn)
                 try:
                     sz = os.path.getsize(full)

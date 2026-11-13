@@ -35,4 +35,22 @@ hermes plugins uninstall opencode-free-acp || true
 hermes plugins install cryptobredda/hermes-opencode-free-acp --enable \
   || echo "PERINGATAN: pasang plugin gagal, smoke test akan menentukan."
 
+echo "== Pasang plugin OpenCode ACP (jovylle) =="
+# Plugin kedua, slug provider "opencode-acp", basis harian penulisnya di
+# Hermes 0.21.x + OpenCode 1.18.x. Cara pasang resminya sudah Lyra audit
+# 13 Nov: skrip install-plugin.sh hanya menyalin folder plugin/ ke
+# ~/.hermes/plugins/model-providers/opencode-acp, jadi penyalinan yang sama
+# dilakukan langsung di sini, lalu plugin diaktifkan.
+rm -rf /tmp/hermes-opencode-acp
+if git clone -q --depth 1 https://github.com/jovylle/hermes-opencode-acp.git /tmp/hermes-opencode-acp; then
+  mkdir -p "$HOME/.hermes/plugins/model-providers"
+  rm -rf "$HOME/.hermes/plugins/model-providers/opencode-acp"
+  cp -R /tmp/hermes-opencode-acp/plugin "$HOME/.hermes/plugins/model-providers/opencode-acp"
+  rm -rf "$HOME/.hermes/plugins/model-providers/opencode-acp/__pycache__"
+  hermes plugins enable opencode-acp-provider || true
+  hermes plugins validate "$HOME/.hermes/plugins/model-providers/opencode-acp" || true
+else
+  echo "PERINGATAN: clone plugin jovylle gagal, lewati."
+fi
+
 echo "Pemasangan selesai."

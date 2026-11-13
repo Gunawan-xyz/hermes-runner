@@ -100,6 +100,13 @@ jobs:
           echo "== kunci teratas config.yaml =="; grep -E '^[a-z_]+:' ~/.hermes/config.yaml || true
           echo "== bagian model config.yaml =="; grep -A 8 '^model:' ~/.hermes/config.yaml || true
           echo "== isi ~/.hermes =="; ls ~/.hermes || true
+          echo "== model gratis di katalog OpenCode =="; opencode models 2>&1 | grep -i free | head -15 || true
+          echo "== probe hermes config set (bentuk config plugin jovylle) =="
+          hermes config set model.provider opencode-acp || true
+          hermes config set model.model opencode/deepseek-v4.1-flash-free || true
+          hermes config set model.base_url acp://opencode || true
+          hermes config set model.api_mode chat_completions || true
+          echo "== bagian model SETELAH probe =="; grep -A 8 '^model:' ~/.hermes/config.yaml || true
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.

@@ -39,13 +39,24 @@ try_cmd() {
 
 # Bentuk one-shot Hermes: hermes chat -q "<prompt>" (prompt adalah NILAI
 # dari -q, bukan argumen posisi bebas; posisi bebas ditolak argparse pada
-# run uji pertama).
-try_cmd "chat -q opencode-free-acp big-pickle" \
-  hermes chat -q "$PROMPT" --provider opencode-free-acp --model opencode/big-pickle && exit 0
-try_cmd "chat -q opencode-free-acp deepseek-flash-free" \
+# run uji pertama). Kandidat mencakup dua plugin ACP dan hanya model yang
+# memang terdaftar gratis di katalog OpenCode (big-pickle TIDAK termasuk
+# daftar gratis plugin, hasil temuan run uji keempat):
+# - jovylle/hermes-opencode-acp, slug "opencode-acp", model contoh penulisnya
+#   opencode/deepseek-v4.1-flash-free dan opencode/mimo-v2.5-free
+# - cryptobredda/hermes-opencode-free-acp, slug "opencode-free-acp", model
+#   yang dinyatakan sudah diuji langsung penulisnya: deepseek-v4.1-flash-free
+#   dan glm-5.3-flash-free
+# Bentuk flag divariasikan (dengan -Q, dengan --max-turns, polos) supaya satu
+# perbedaan parser antar versi Hermes tidak menggugurkan semua kandidat.
+try_cmd "opencode-acp deepseek-flash-free (-Q)" \
+  hermes chat -q "$PROMPT" -Q --max-turns 2 --provider opencode-acp --model opencode/deepseek-v4.1-flash-free && exit 0
+try_cmd "opencode-acp mimo-free" \
+  hermes chat -q "$PROMPT" --max-turns 2 --provider opencode-acp --model opencode/mimo-v2.5-free && exit 0
+try_cmd "opencode-free-acp deepseek-flash-free" \
   hermes chat -q "$PROMPT" --provider opencode-free-acp --model opencode/deepseek-v4.1-flash-free && exit 0
-try_cmd "chat --query opencode-free-acp big-pickle" \
-  hermes chat --query "$PROMPT" --provider opencode-free-acp --model opencode/big-pickle && exit 0
+try_cmd "opencode-free-acp glm-flash-free" \
+  hermes chat -q "$PROMPT" --provider opencode-free-acp --model opencode/glm-5.3-flash-free && exit 0
 
 echo "Smoke test GAGAL: tidak ada jalur model yang menjawab dengan benar."
 echo "Periksa: plugin opencode-free-acp terpasang? OpenCode CLI bisa jalan? Konfigurasi di ~/.hermes/config.yaml."
