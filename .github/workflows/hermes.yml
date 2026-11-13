@@ -196,7 +196,10 @@ jobs:
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
           set -a; [ -f ~/.hermes/.env ] && . ~/.hermes/.env; set +a
           hermes fallback --help || true
-          OUT=$(timeout 120 hermes chat -q "Berapa hasil 37 tambah 5? Balas hanya angkanya saja." -Q --provider opencode-zen --model deepseek-v4.1-flash-free --max-turns 2 2>&1)
+          # `|| true` di dalam substitusi WAJIB: tanpa itu, timeout yang
+          # membunuh chat (exit 124) menghentikan seluruh skrip (bash -e)
+          # sebelum verdict sempat dicetak (kejadian run #12, 13 Nov).
+          OUT=$(timeout 120 hermes chat -q "Berapa hasil 37 tambah 5? Balas hanya angkanya saja." -Q --provider opencode-zen --model deepseek-v4.1-flash-free --max-turns 2 2>&1 || true)
           echo "$OUT" | tail -5
           if echo "$OUT" | grep -qx "42"; then
             echo "ZEN-PROBE: LULUS (jalur API key menjawab dari runner)"
