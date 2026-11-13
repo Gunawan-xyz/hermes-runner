@@ -106,13 +106,22 @@ def build_zip(zip_path):
                     continue
                 full = os.path.join(root, fn)
                 try:
+                    # Hanya berkas reguler: socket/pipa (mis. gateway.sock,
+                    # penyebab crash backup run uji kelima) tidak bisa
+                    # dibuka sebagai berkas dan harus dilewati.
+                    import stat as _stat
+                    if not _stat.S_ISREG(os.lstat(full).st_mode):
+                        continue
                     sz = os.path.getsize(full)
                 except OSError:
                     continue
                 rel = os.path.relpath(full, HERMES_DIR)
                 sizes[rel.split(os.sep)[0]] = sizes.get(rel.split(os.sep)[0], 0) + sz
                 total += sz
-                z.write(full, rel)
+                try:
+                    z.write(full, rel)
+                except OSError as e:
+                    print(f"  lewati {rel} ({e})")
     print("Isi backup per folder teratas (MB):")
     for top, sz in sorted(sizes.items(), key=lambda kv: -kv[1])[:10]:
         print(f"  {top}: {sz / 1e6:.1f}")

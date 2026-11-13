@@ -101,12 +101,24 @@ jobs:
           echo "== bagian model config.yaml =="; grep -A 8 '^model:' ~/.hermes/config.yaml || true
           echo "== isi ~/.hermes =="; ls ~/.hermes || true
           echo "== model gratis di katalog OpenCode =="; opencode models 2>&1 | grep -i free | head -15 || true
-          echo "== probe hermes config set (bentuk config plugin jovylle) =="
-          hermes config set model.provider opencode-acp || true
-          hermes config set model.model opencode/deepseek-v4.1-flash-free || true
-          hermes config set model.base_url acp://opencode || true
-          hermes config set model.api_mode chat_completions || true
-          echo "== bagian model SETELAH probe =="; grep -A 8 '^model:' ~/.hermes/config.yaml || true
+
+      # 3c. Terapkan konfigurasi model pemenang di SETIAP sesi (bukan cuma
+      #     seed): kombinasi yang lulus smoke test run uji kelima adalah
+      #     plugin cryptobredda (provider opencode-free-acp) + model
+      #     opencode/deepseek-v4.1-flash-free. `hermes config set` terbukti
+      #     menempel di skema config v53 (run uji kelima), dan langkah ini
+      #     membuat sesi selalu konvergen walau state restore berasal dari
+      #     konfigurasi lama. base_url/api_mode dikosongkan karena itu
+      #     penanda milik plugin jovylle, bukan plugin ini.
+      - name: Terapkan konfigurasi model
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+          hermes config set model.provider opencode-free-acp
+          hermes config set model.model opencode/deepseek-v4.1-flash-free
+          hermes config set model.base_url "" || true
+          hermes config set model.api_mode "" || true
+          echo "== model yang berlaku =="
+          grep -A 6 '^model:' ~/.hermes/config.yaml || true
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
@@ -118,6 +130,9 @@ jobs:
         run: |
           nohup hermes gateway > "$HOME/hermes-gateway.log" 2>&1 &
           echo "Gateway dimulai, pid $!"
+          sleep 10
+          if kill -0 $! 2>/dev/null; then echo "Gateway masih hidup setelah 10 detik."; else echo "PERINGATAN: gateway mati dalam 10 detik pertama."; fi
+          tail -15 "$HOME/hermes-gateway.log" || true
 
       # 6. Backup berkala tiap 30 menit di latar belakang
       - name: Mulai loop backup berkala

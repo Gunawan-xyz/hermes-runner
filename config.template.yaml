@@ -20,7 +20,7 @@
 
 model:
   provider: opencode-free-acp
-  model: opencode/big-pickle
+  model: opencode/deepseek-v4.1-flash-free
 
 gateway:
   telegram:
