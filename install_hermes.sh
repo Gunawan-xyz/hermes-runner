@@ -27,9 +27,12 @@ echo "== Pasang plugin OpenCode Free ACP =="
 # Menjalankan OpenCode CLI asli lewat ACP supaya free tier bawaan OpenCode
 # bisa dipakai Hermes tanpa API key (prinsip yang sama dengan Paperclip).
 # Idempotent: state hasil restore bisa sudah memuat plugin-nya (run uji
-# kedua menabrak "already exists"), jadi kegagalan install dicoba update.
+# kedua menabrak "already exists"). Hasil restore berupa zip juga membuat
+# `plugins update` menolak ("no owned Git checkout", run uji ketiga), jadi
+# jalurnya: copot dulu salinan lama (abaikan bila tidak ada), baru pasang
+# segar dari repo-nya.
+hermes plugins uninstall opencode-free-acp || true
 hermes plugins install cryptobredda/hermes-opencode-free-acp --enable \
-  || hermes plugins update opencode-free-acp \
   || echo "PERINGATAN: pasang plugin gagal, smoke test akan menentukan."
 
 echo "Pemasangan selesai."

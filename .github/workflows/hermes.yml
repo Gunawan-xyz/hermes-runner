@@ -84,6 +84,23 @@ jobs:
           echo "IP       : $(tailscale ip -4)"
           echo "Perintah : ssh runner@$(tailscale ip -4)"
 
+      # 3b. Diagnostik (tidak pernah menggagalkan run): memetakan versi,
+      #     plugin, daftar provider, dan bentuk config yang benar-benar
+      #     berlaku, supaya smoke test dan templat config bisa dikunci dari
+      #     fakta log, bukan tebakan. Hanya bagian model dari config yang
+      #     ditampilkan.
+      - name: Diagnostik Hermes
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+          echo "== hermes --version =="; hermes --version || true
+          echo "== opencode --version =="; opencode --version || true
+          echo "== opencode acp tersedia? =="; opencode acp --help 2>&1 | head -4 || true
+          echo "== hermes plugins list =="; hermes plugins list || true
+          echo "== hermes doctor =="; hermes doctor 2>&1 | head -40 || true
+          echo "== kunci teratas config.yaml =="; grep -E '^[a-z_]+:' ~/.hermes/config.yaml || true
+          echo "== bagian model config.yaml =="; grep -A 8 '^model:' ~/.hermes/config.yaml || true
+          echo "== isi ~/.hermes =="; ls ~/.hermes || true
+
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
       - name: Smoke test model (OpenCode)

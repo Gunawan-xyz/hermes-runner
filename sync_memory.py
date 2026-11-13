@@ -29,7 +29,7 @@ def _req(method, url, data=None, extra_headers=None):
     if extra_headers:
         headers.update(extra_headers)
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    return urllib.request.urlopen(req)
+    return urllib.request.urlopen(req, timeout=180)
 
 
 def list_backups():
@@ -77,6 +77,41 @@ def pull():
         print(f"Gagal restore ({e}), mulai dari keadaan segar.")
 
 
+# Bagian aplikasi BUKAN state: installer resmi Hermes mengkloning aplikasi ke
+# ~/.hermes/hermes-agent dan membuat venv; itu dipasang ulang tiap run dan
+# tidak boleh ikut backup (run uji ketiga: zip membengkak, upload ditolak
+# Supabase HTTP 400). Nama generik menutup variasi tata letak antar versi.
+SKIP_DIRS = {"hermes-agent", "venv", ".venv", "node_modules", ".git",
+             "__pycache__", ".cache"}
+
+
+def build_zip(zip_path):
+    import zipfile
+
+    sizes = {}
+    total = 0
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, dirs, files in os.walk(HERMES_DIR):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for fn in files:
+                full = os.path.join(root, fn)
+                try:
+                    sz = os.path.getsize(full)
+                except OSError:
+                    continue
+                rel = os.path.relpath(full, HERMES_DIR)
+                sizes[rel.split(os.sep)[0]] = sizes.get(rel.split(os.sep)[0], 0) + sz
+                total += sz
+                z.write(full, rel)
+    print("Isi backup per folder teratas (MB):")
+    for top, sz in sorted(sizes.items(), key=lambda kv: -kv[1])[:10]:
+        print(f"  {top}: {sz / 1e6:.1f}")
+    print(f"Total isi sebelum kompresi: {total / 1e6:.1f} MB")
+    if total > 45_000_000:
+        print("PERINGATAN: isi backup melebihi 45 MB, rawan ditolak batas berkas Supabase.")
+    return zip_path
+
+
 def push():
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("SUPABASE_URL/SUPABASE_KEY belum di-set, lewati backup.")
@@ -87,7 +122,7 @@ def push():
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     name = f"hermes-{stamp}.zip"
     print(f"Membuat backup {name} dari {HERMES_DIR} ...")
-    zip_path = shutil.make_archive(TMP_BASE, "zip", HERMES_DIR)
+    zip_path = build_zip(f"{TMP_BASE}.zip")
     url = f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{name}"
     with open(zip_path, "rb") as f:
         payload = f.read()
