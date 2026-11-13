@@ -31,6 +31,8 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
 
@@ -59,6 +61,28 @@ jobs:
           else
             echo "Konfigurasi dari restore dipakai."
           fi
+
+      # 3b. Akses admin: Tailscale + SSH (pola yang sama dengan
+      #     ssh-access-linux.yml di My-Desktop, tanpa password tertulis).
+      #     Dilewati dengan aman bila secret-nya masih placeholder.
+      - name: Setup Tailscale + SSH
+        run: |
+          if [ -z "${TAILSCALE_AUTHKEY:-}" ] || [ "$TAILSCALE_AUTHKEY" = "BELUM_DIISI" ] \
+             || [ -z "${SSH_PUBLIC_KEY:-}" ] || [ "$SSH_PUBLIC_KEY" = "BELUM_DIISI" ]; then
+            echo "TAILSCALE_AUTHKEY / SSH_PUBLIC_KEY belum diisi, akses SSH dilewati."
+            exit 0
+          fi
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="hermes-${{ github.run_id }}"
+          sudo apt-get update -qq && sudo apt-get install -y -qq openssh-server > /dev/null
+          mkdir -p "$HOME/.ssh"
+          echo "$SSH_PUBLIC_KEY" >> "$HOME/.ssh/authorized_keys"
+          chmod 700 "$HOME/.ssh" && chmod 600 "$HOME/.ssh/authorized_keys"
+          sudo service ssh start || sudo systemctl start ssh || true
+          echo "== Akses SSH sesi ini =="
+          echo "Hostname : hermes-${{ github.run_id }}"
+          echo "IP       : $(tailscale ip -4)"
+          echo "Perintah : ssh runner@$(tailscale ip -4)"
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.

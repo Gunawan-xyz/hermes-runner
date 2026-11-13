@@ -34,6 +34,17 @@ keadaan terakhir di mesin yang selalu baru.
 | `OPENCODE_API_KEY` | Kunci OpenCode Zen untuk model Hermes |
 | `TELEGRAM_BOT_TOKEN` | Token bot Telegram untuk gateway (opsional, untuk chat dari HP) |
 | `TELEGRAM_USER_ID` | ID numerik Telegram pemilik; hanya user ini yang dilayani bot |
+| `TAILSCALE_AUTHKEY` | Auth key Tailscale untuk runner (disarankan reusable + ephemeral) |
+| `SSH_PUBLIC_KEY` | Public key SSH pemilik untuk login admin ke runner |
+
+## Akses SSH
+
+Setiap sesi yang secret-nya lengkap memasang Tailscale + OpenSSH dan mencetak
+hostname (`hermes-<run_id>`) serta IP tailnet di step "Setup Tailscale + SSH"
+pada log run. Login dari perangkat mana pun di tailnet yang sama:
+`ssh runner@<IP>`. Hostname berganti tiap sesi karena mesinnya selalu baru.
+Bila kedua secret masih placeholder, langkah ini dilewati dan Hermes tetap
+bisa dipakai lewat Telegram.
 
 Tidak ada nilai kredensial yang boleh ditulis di berkas repo ini.
 
