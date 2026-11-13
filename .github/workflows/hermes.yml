@@ -1,0 +1,94 @@
+name: Hermes Agent 24/7
+
+# Rantai sesi Hermes: setiap run menjalankan Hermes sampai mendekati batas
+# 6 jam job GitHub-hosted, memicu run berikutnya dari dalam (workflow_dispatch
+# adalah pengecualian yang tetap jalan memakai GITHUB_TOKEN bawaan), lalu
+# backup state terakhir sebelum selesai. Watchdog (hermes-watchdog.yml)
+# menyalakan lagi rantai yang putus.
+#
+# Menghentikan rantai: set repo Variable CHAIN_ENABLED=false lalu batalkan
+# run yang sedang jalan. Backup/restore tetap aman karena state di Supabase.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: hermes-chain
+  cancel-in-progress: false
+
+jobs:
+  hermes:
+    name: Hermes session
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Catat waktu mulai sesi
+        run: echo "SESSION_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      # 1. Restore state Hermes dari backup terakhir (kalau ada)
+      - name: Restore state dari Supabase
+        run: python3 sync_memory.py pull
+
+      # 2. Pasang Hermes Agent + OpenCode
+      - name: Pasang Hermes Agent dan OpenCode
+        run: ./install_hermes.sh
+
+      # 3. Seed konfigurasi awal hanya bila restore kosong (run pertama)
+      - name: Seed konfigurasi awal (bila belum ada)
+        run: |
+          if [ ! -f "$HOME/.hermes/config.yaml" ]; then
+            mkdir -p "$HOME/.hermes"
+            cp config.template.yaml "$HOME/.hermes/config.yaml"
+            echo "Konfigurasi awal dipasang dari templat."
+          else
+            echo "Konfigurasi dari restore dipakai."
+          fi
+
+      # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
+      #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
+      - name: Smoke test model (OpenCode)
+        run: ./smoke_test.sh
+
+      # 5. Jalankan gateway Hermes di latar belakang (chat dari HP via Telegram)
+      - name: Jalankan gateway Hermes
+        run: |
+          nohup hermes gateway > "$HOME/hermes-gateway.log" 2>&1 &
+          echo "Gateway dimulai, pid $!"
+
+      # 6. Backup berkala tiap 30 menit di latar belakang
+      - name: Mulai loop backup berkala
+        run: |
+          nohup bash -c 'while true; do sleep 1800; python3 sync_memory.py push || true; done' > "$HOME/hermes-backup.log" 2>&1 &
+          echo "Loop backup berkala dimulai, pid $!"
+
+      # 7. Tahan sesi sampai menit ke-335, lalu picu run berikutnya
+      - name: Keep alive dan sambung rantai
+        run: |
+          TARGET=$(( SESSION_START + 335 * 60 ))
+          while [ "$(date +%s)" -lt "$TARGET" ]; do sleep 60; done
+          if [ "${{ vars.CHAIN_ENABLED }}" != "false" ]; then
+            gh workflow run hermes.yml
+            echo "Run berikutnya sudah dipicu."
+          else
+            echo "CHAIN_ENABLED=false, rantai tidak disambung."
+          fi
+
+      # 8. Backup akhir, selalu jalan walau run dibatalkan
+      - name: Backup akhir ke Supabase
+        if: always()
+        run: python3 sync_memory.py push

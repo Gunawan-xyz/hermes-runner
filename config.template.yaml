@@ -1,0 +1,21 @@
+# Templat konfigurasi awal Hermes Agent (dipakai hanya pada run pertama,
+# saat restore dari Supabase masih kosong; run berikutnya memakai konfigurasi
+# dari restore).
+#
+# CATATAN UJI PERTAMA: nama kunci persisnya mengikuti dokumentasi Hermes dan
+# dikunci setelah uji pertama. Nilai yang wajib benar isinya:
+#   provider : OpenCode (endpoint Zen, gaya OpenAI-compatible)
+#   base_url : https://opencode.ai/zen/v1
+#   model    : opencode/big-pickle
+#   api_key  : dari Secret OPENCODE_API_KEY (jangan tulis nilai asli di repo)
+# Gateway Telegram aktif bila Secret TELEGRAM_BOT_TOKEN terisi.
+
+model:
+  provider: opencode
+  base_url: https://opencode.ai/zen/v1
+  model: opencode/big-pickle
+  api_key: "__ISI_DARI_SECRET_OPENCODE_API_KEY__"
+
+gateway:
+  telegram:
+    enabled: true

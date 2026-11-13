@@ -1,0 +1,37 @@
+name: Hermes Watchdog
+
+# Penjaga rantai: tiap 30 menit memeriksa apakah ada sesi Hermes yang aktif.
+# Kalau tidak ada (rantai putus, smoke test gagal, atau run dibatalkan),
+# watchdog memicu run baru. Set repo Variable CHAIN_ENABLED=false untuk
+# mematikan rantai secara permanen; watchdog akan berhenti memicu.
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  check:
+    name: Periksa rantai Hermes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Picu run baru bila rantai mati
+        run: |
+          if [ "${{ vars.CHAIN_ENABLED }}" = "false" ]; then
+            echo "CHAIN_ENABLED=false, watchdog diam."
+            exit 0
+          fi
+          active=$(gh run list --workflow hermes.yml --limit 5 --json status \
+            --jq '[.[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting" or .status=="pending" or .status=="requested")] | length')
+          echo "Run Hermes aktif/antre: $active"
+          if [ "$active" = "0" ]; then
+            gh workflow run hermes.yml
+            echo "Rantai mati, run Hermes baru dipicu."
+          fi
