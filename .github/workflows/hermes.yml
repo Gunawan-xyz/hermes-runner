@@ -34,6 +34,7 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
       TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
@@ -107,64 +108,71 @@ jobs:
           echo "== isi ~/.hermes =="; ls ~/.hermes || true
           echo "== model gratis di katalog OpenCode =="; opencode models 2>&1 | grep -i free | head -15 || true
 
-      # 3c. Terapkan konfigurasi model pemenang di SETIAP sesi (bukan cuma
-      #     seed): kombinasi yang lulus smoke test run uji kelima adalah
-      #     plugin cryptobredda (provider opencode-free-acp) + model
-      #     opencode/deepseek-v4.1-flash-free. `hermes config set` terbukti
-      #     menempel di skema config v53 (run uji kelima), dan langkah ini
-      #     membuat sesi selalu konvergen walau state restore berasal dari
-      #     konfigurasi lama. base_url/api_mode dikosongkan karena itu
-      #     penanda milik plugin jovylle, bukan plugin ini.
+      # 3c. Terapkan konfigurasi model di SETIAP sesi (bukan cuma seed),
+      #     supaya sesi selalu konvergen walau state restore berasal dari
+      #     konfigurasi lama. Utama sejak 13 Nov malam (pilihan Awan):
+      #     provider gemini, model gemini-3.5-flash-lite (API langsung,
+      #     jatah gratis 500 request/hari per project). Jalur ACP yang
+      #     terbukti sejak run uji kelima menjadi rantai fallback di
+      #     bawahnya, jadi kuota Gemini habis pun bot tetap hidup.
       - name: Terapkan konfigurasi model
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-          hermes config set model.provider opencode-free-acp
-          hermes config set model.model opencode/deepseek-v4.1-flash-free
+          hermes config set model.provider gemini
+          hermes config set model.model gemini-3.5-flash-lite
           hermes config set model.base_url "" || true
           hermes config set model.api_mode "" || true
           echo "== model yang berlaku =="
           grep -A 6 '^model:' ~/.hermes/config.yaml || true
-          # Jalur API key OpenCode (permintaan Awan 13 Nov malam): key dari
-          # secret OPENCODE_API_KEY ditulis ke ~/.hermes/.env dengan nama
-          # yang dicari provider Hermes (opencode-zen / opencode-go).
-          # Nilainya tidak pernah dicetak ke log.
+          # API key ditulis ke ~/.hermes/.env dengan nama yang dicari
+          # provider Hermes: Gemini (GOOGLE_API_KEY / GEMINI_API_KEY) dan
+          # OpenCode (OPENCODE_ZEN_API_KEY / OPENCODE_GO_API_KEY, untuk
+          # entri fallback dan cadangan). Nilai tidak pernah dicetak.
           touch ~/.hermes/.env
-          sed -i '/^OPENCODE_ZEN_API_KEY=/d; /^OPENCODE_GO_API_KEY=/d' ~/.hermes/.env
+          sed -i '/^OPENCODE_ZEN_API_KEY=/d; /^OPENCODE_GO_API_KEY=/d; /^GEMINI_API_KEY=/d; /^GOOGLE_API_KEY=/d' ~/.hermes/.env
           if [ -n "$OPENCODE_API_KEY" ] && [ "$OPENCODE_API_KEY" != "BELUM_DIISI" ]; then
             echo "OPENCODE_ZEN_API_KEY=$OPENCODE_API_KEY" >> ~/.hermes/.env
             echo "OPENCODE_GO_API_KEY=$OPENCODE_API_KEY" >> ~/.hermes/.env
             echo "API key OpenCode ditulis ke .env (isi tidak ditampilkan)"
           else
-            echo "OPENCODE_API_KEY kosong/placeholder, jalur API key dilewati"
+            echo "OPENCODE_API_KEY kosong/placeholder, dilewati"
           fi
-          # Rantai fallback (dok resmi Hermes: fallback_providers di
-          # config.yaml): 1) opencode-zen model yang sama lewat API key
-          # (jalan berbeda dari jembatan ACP), 2) ACP dengan model GLM
-          # (jalan yang sama, model berbeda, seperti /model manual Awan).
-          # Ditulis PALING AKHIR di langkah ini supaya tidak tertimpa
-          # config set di atas. PERBAIKAN 13 Nov malam: config bawaan
-          # skema v53 sudah berisi "fallback_providers: []" (daftar
-          # kosong), jadi penjaga grep versi pertama keliru mengira
-          # rantai sudah terpasang. Sekarang daftar kosong itu DIGANTI
-          # isinya; daftar yang sudah berisi entri dibiarkan.
+          if [ -n "$GEMINI_API_KEY" ] && [ "$GEMINI_API_KEY" != "BELUM_DIISI" ]; then
+            echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> ~/.hermes/.env
+            echo "GOOGLE_API_KEY=$GEMINI_API_KEY" >> ~/.hermes/.env
+            echo "API key Gemini ditulis ke .env (isi tidak ditampilkan)"
+          else
+            echo "GEMINI_API_KEY kosong/placeholder, dilewati"
+          fi
+          # Rantai fallback di bawah Gemini (dok resmi Hermes:
+          # fallback_providers di config.yaml): dua-duanya jalur ACP yang
+          # terbukti, 1) deepseek-v4.1-flash-free, 2) glm-5.3-flash-free.
+          # opencode-zen DICABUT dari rantai: tidak pernah menjawab
+          # (429 dari VM Lyra, hang 120 dan 180 detik dari runner, sesi
+          # branch api-key-saja 13 Nov). Blok fallback lama dari state
+          # restore SELALU dibuang lalu ditulis ulang persis seperti ini,
+          # ditulis paling akhir supaya tidak tertimpa config set.
           python3 - <<'PYEOF'
-          import re
           p = '/home/runner/.hermes/config.yaml'
-          s = open(p).read()
+          lines = open(p).read().splitlines(True)
+          out = []
+          i = 0
+          while i < len(lines):
+              if lines[i].startswith('fallback_providers:'):
+                  i += 1
+                  while i < len(lines) and lines[i][:1] in (' ', '\t'):
+                      i += 1
+                  continue
+              out.append(lines[i])
+              i += 1
           block = ("fallback_providers:\n"
-                   "  - provider: opencode-zen\n"
-                   "    model: deepseek-v4.1-flash-free\n"
+                   "  - provider: opencode-free-acp\n"
+                   "    model: opencode/deepseek-v4.1-flash-free\n"
                    "  - provider: opencode-free-acp\n"
                    "    model: opencode/glm-5.3-flash-free\n")
-          if re.search(r'^fallback_providers:\s*\[\]\s*$', s, re.M):
-              s = re.sub(r'^fallback_providers:\s*\[\]\s*$', block.rstrip('\n'), s, count=1, flags=re.M)
-              open(p, 'w').write(s)
-              print('fallback_providers: daftar kosong diganti rantai fallback')
-          elif re.search(r'^fallback_providers:\s*$', s, re.M):
-              print('fallback_providers: sudah berisi entri, tidak diubah')
-          else:
-              open(p, 'a').write('\n' + block)
-              print('fallback_providers: ditambahkan ke config.yaml')
+          s = ''.join(out).rstrip('\n') + '\n\n' + block
+          open(p, 'w').write(s)
+          print('fallback_providers: ditulis ulang (ACP deepseek, ACP glm)')
           PYEOF
           hermes fallback list || true
 
@@ -181,31 +189,6 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
           hermes pairing approve telegram "$PAIRING_CODE"
-
-      # 3e. Uji jalur API key dari IP runner (diagnostik, TIDAK menggagalkan
-      #     run): dari jaringan Lyra jalur ini kena batas pemakaian gratis
-      #     (HTTP 429 FreeUsageLimitError), jadi bukti penentunya adalah
-      #     panggilan beneran dari mesin runner sendiri. PERBAIKAN 13 Nov
-      #     malam: `hermes fallback check` TIDAK ADA di CLI v0.23.1 (dok
-      #     webnya mendahului versi ini), jadi ujinya sekarang berupa chat
-      #     beneran lewat provider opencode-zen dengan disiplin smoke test
-      #     (lulus = ada baris tepat "42"), hasilnya ditandai ZEN-PROBE.
-      - name: Uji jalur API key OpenCode (diagnostik)
-        continue-on-error: true
-        run: |
-          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-          set -a; [ -f ~/.hermes/.env ] && . ~/.hermes/.env; set +a
-          hermes fallback --help || true
-          # `|| true` di dalam substitusi WAJIB: tanpa itu, timeout yang
-          # membunuh chat (exit 124) menghentikan seluruh skrip (bash -e)
-          # sebelum verdict sempat dicetak (kejadian run #12, 13 Nov).
-          OUT=$(timeout 120 hermes chat -q "Berapa hasil 37 tambah 5? Balas hanya angkanya saja." -Q --provider opencode-zen --model deepseek-v4.1-flash-free --max-turns 2 2>&1 || true)
-          echo "$OUT" | tail -5
-          if echo "$OUT" | grep -qx "42"; then
-            echo "ZEN-PROBE: LULUS (jalur API key menjawab dari runner)"
-          else
-            echo "ZEN-PROBE: GAGAL (lihat keluaran di atas)"
-          fi
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
