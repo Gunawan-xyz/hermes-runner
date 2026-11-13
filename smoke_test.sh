@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke test model: Hermes harus BENAR-BENAR menjawab lewat provider ACP
-# OpenCode sebelum sesi dibuka.
+# Smoke test model: Hermes harus BENAR-BENAR menjawab lewat provider
+# opencode-zen (API key) sebelum sesi dibuka. (BRANCH api-key-saja)
 #
 # Pelajaran run uji pertama (13 Nov): kriteria lama longgar (grep kata
 # SMOKE_OK di output mana pun) menghasilkan LULUS PALSU, karena pesan error
@@ -49,22 +49,13 @@ try_cmd() {
 #   dan glm-5.3-flash-free
 # Bentuk flag divariasikan (dengan -Q, dengan --max-turns, polos) supaya satu
 # perbedaan parser antar versi Hermes tidak menggugurkan semua kandidat.
-# Urutan kandidat (hasil run uji kelima, 13 Nov):
-# 1. Config saja, tanpa flag: persis jalur resolusi yang dipakai gateway
-#    Telegram, jadi lulus di sini berarti gateway akan memakai model yang sama.
-# 2. Kombinasi yang TERBUKTI lulus di run kelima: plugin cryptobredda
-#    (opencode-free-acp) + deepseek-v4.1-flash-free (22 detik, tool loop jalan).
-# 3. Model cadangan plugin yang sama: glm-5.3-flash-free.
-# 4. Plugin jovylle dengan ID model yang benar dari katalog (mimo-v2.6).
-try_cmd "config saja (jalur gateway)" \
+# BRANCH api-key-saja (13 Nov malam, permintaan Awan): satu-satunya
+# kandidat adalah config saja. Di branch ini config menunjuk provider
+# opencode-zen (API key), jadi lulus di sini berarti gateway Telegram
+# berjalan murni lewat API key, tanpa ACP dan tanpa fallback.
+try_cmd "config saja (opencode-zen, API key)" \
   hermes chat -q "$PROMPT" -Q --max-turns 2 && exit 0
-try_cmd "opencode-free-acp deepseek-flash-free" \
-  hermes chat -q "$PROMPT" --provider opencode-free-acp --model opencode/deepseek-v4.1-flash-free && exit 0
-try_cmd "opencode-free-acp glm-flash-free" \
-  hermes chat -q "$PROMPT" --provider opencode-free-acp --model opencode/glm-5.3-flash-free && exit 0
-try_cmd "opencode-acp mimo-v2.6-flash-free" \
-  hermes chat -q "$PROMPT" --max-turns 2 --provider opencode-acp --model opencode/mimo-v2.6-flash-free && exit 0
 
-echo "Smoke test GAGAL: tidak ada jalur model yang menjawab dengan benar."
-echo "Periksa: plugin opencode-free-acp terpasang? OpenCode CLI bisa jalan? Konfigurasi di ~/.hermes/config.yaml."
+echo "Smoke test GAGAL: jalur API key (opencode-zen) tidak menjawab dengan benar."
+echo "Periksa: OPENCODE_ZEN_API_KEY terisi di ~/.hermes/.env? Batas pemakaian model gratis Zen?"
 exit 1
