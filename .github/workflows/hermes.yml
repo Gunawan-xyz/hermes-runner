@@ -142,20 +142,30 @@ jobs:
           # (jalan berbeda dari jembatan ACP), 2) ACP dengan model GLM
           # (jalan yang sama, model berbeda, seperti /model manual Awan).
           # Ditulis PALING AKHIR di langkah ini supaya tidak tertimpa
-          # config set di atas; penjaga grep membuatnya idempotent.
-          if ! grep -q '^fallback_providers:' ~/.hermes/config.yaml; then
-            cat >> ~/.hermes/config.yaml <<'YAML'
-
-          fallback_providers:
-            - provider: opencode-zen
-              model: deepseek-v4.1-flash-free
-            - provider: opencode-free-acp
-              model: opencode/glm-5.3-flash-free
-          YAML
-            echo "fallback_providers ditulis ke config.yaml"
-          else
-            echo "fallback_providers sudah ada, tidak diubah"
-          fi
+          # config set di atas. PERBAIKAN 13 Nov malam: config bawaan
+          # skema v53 sudah berisi "fallback_providers: []" (daftar
+          # kosong), jadi penjaga grep versi pertama keliru mengira
+          # rantai sudah terpasang. Sekarang daftar kosong itu DIGANTI
+          # isinya; daftar yang sudah berisi entri dibiarkan.
+          python3 - <<'PYEOF'
+          import re
+          p = '/home/runner/.hermes/config.yaml'
+          s = open(p).read()
+          block = ("fallback_providers:\n"
+                   "  - provider: opencode-zen\n"
+                   "    model: deepseek-v4.1-flash-free\n"
+                   "  - provider: opencode-free-acp\n"
+                   "    model: opencode/glm-5.3-flash-free\n")
+          if re.search(r'^fallback_providers:\s*\[\]\s*$', s, re.M):
+              s = re.sub(r'^fallback_providers:\s*\[\]\s*$', block.rstrip('\n'), s, count=1, flags=re.M)
+              open(p, 'w').write(s)
+              print('fallback_providers: daftar kosong diganti rantai fallback')
+          elif re.search(r'^fallback_providers:\s*$', s, re.M):
+              print('fallback_providers: sudah berisi entri, tidak diubah')
+          else:
+              open(p, 'a').write('\n' + block)
+              print('fallback_providers: ditambahkan ke config.yaml')
+          PYEOF
           hermes fallback list || true
 
       # 3d. Setujui pairing Telegram (hanya bila dispatch membawa kode):
@@ -174,14 +184,25 @@ jobs:
 
       # 3e. Uji jalur API key dari IP runner (diagnostik, TIDAK menggagalkan
       #     run): dari jaringan Lyra jalur ini kena batas pemakaian gratis
-      #     (HTTP 429 FreeUsageLimitError), jadi bukti penentunya adalah hasil
-      #     check --live dari mesin runner sendiri, tercatat di log sesi.
+      #     (HTTP 429 FreeUsageLimitError), jadi bukti penentunya adalah
+      #     panggilan beneran dari mesin runner sendiri. PERBAIKAN 13 Nov
+      #     malam: `hermes fallback check` TIDAK ADA di CLI v0.23.1 (dok
+      #     webnya mendahului versi ini), jadi ujinya sekarang berupa chat
+      #     beneran lewat provider opencode-zen dengan disiplin smoke test
+      #     (lulus = ada baris tepat "42"), hasilnya ditandai ZEN-PROBE.
       - name: Uji jalur API key OpenCode (diagnostik)
         continue-on-error: true
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
           set -a; [ -f ~/.hermes/.env ] && . ~/.hermes/.env; set +a
-          hermes fallback check --live || true
+          hermes fallback --help || true
+          OUT=$(timeout 120 hermes chat -q "Berapa hasil 37 tambah 5? Balas hanya angkanya saja." -Q --provider opencode-zen --model deepseek-v4.1-flash-free --max-turns 2 2>&1)
+          echo "$OUT" | tail -5
+          if echo "$OUT" | grep -qx "42"; then
+            echo "ZEN-PROBE: LULUS (jalur API key menjawab dari runner)"
+          else
+            echo "ZEN-PROBE: GAGAL (lihat keluaran di atas)"
+          fi
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
