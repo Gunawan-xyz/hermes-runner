@@ -110,16 +110,16 @@ jobs:
 
       # 3c. Terapkan konfigurasi model di SETIAP sesi (bukan cuma seed),
       #     supaya sesi selalu konvergen walau state restore berasal dari
-      #     konfigurasi lama. Utama sejak 13 Nov malam (pilihan Awan):
-      #     provider gemini, model gemini-3.5-flash-lite (API langsung,
-      #     jatah gratis 500 request/hari per project). Jalur ACP yang
-      #     terbukti sejak run uji kelima menjadi rantai fallback di
-      #     bawahnya, jadi kuota Gemini habis pun bot tetap hidup.
+      #     konfigurasi lama. Utama SEMENTARA kembali ke ACP deepseek:
+      #     percobaan utama gemini gemini-3.5-flash-lite (13 Nov malam)
+      #     ditolak Google dengan HTTP 404 di smoke test sesi #15, jadi
+      #     ID model yang benar-benar bisa dipakai key ini sedang dicari
+      #     langkah diagnostik 3e. Promosi Gemini menunggu bukti ID lolos.
       - name: Terapkan konfigurasi model
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-          hermes config set model.provider gemini
-          hermes config set model.model gemini-3.5-flash-lite
+          hermes config set model.provider opencode-free-acp
+          hermes config set model.model opencode/deepseek-v4.1-flash-free
           hermes config set model.base_url "" || true
           hermes config set model.api_mode "" || true
           echo "== model yang berlaku =="
@@ -144,14 +144,13 @@ jobs:
           else
             echo "GEMINI_API_KEY kosong/placeholder, dilewati"
           fi
-          # Rantai fallback di bawah Gemini (dok resmi Hermes:
-          # fallback_providers di config.yaml): dua-duanya jalur ACP yang
-          # terbukti, 1) deepseek-v4.1-flash-free, 2) glm-5.3-flash-free.
-          # opencode-zen DICABUT dari rantai: tidak pernah menjawab
-          # (429 dari VM Lyra, hang 120 dan 180 detik dari runner, sesi
-          # branch api-key-saja 13 Nov). Blok fallback lama dari state
-          # restore SELALU dibuang lalu ditulis ulang persis seperti ini,
-          # ditulis paling akhir supaya tidak tertimpa config set.
+          # Rantai fallback di bawah ACP deepseek: satu entri ACP GLM
+          # (terbukti). opencode-zen DICABUT dari rantai: tidak pernah
+          # menjawab (429 dari VM Lyra, hang 120 dan 180 detik dari
+          # runner, sesi branch api-key-saja 13 Nov). Gemini belum masuk
+          # rantai sampai ada ID model yang terbukti lolos diagnostik.
+          # Blok fallback lama dari state restore SELALU dibuang lalu
+          # ditulis ulang persis seperti ini, paling akhir di langkah ini.
           python3 - <<'PYEOF'
           p = '/home/runner/.hermes/config.yaml'
           lines = open(p).read().splitlines(True)
@@ -167,12 +166,10 @@ jobs:
               i += 1
           block = ("fallback_providers:\n"
                    "  - provider: opencode-free-acp\n"
-                   "    model: opencode/deepseek-v4.1-flash-free\n"
-                   "  - provider: opencode-free-acp\n"
                    "    model: opencode/glm-5.3-flash-free\n")
           s = ''.join(out).rstrip('\n') + '\n\n' + block
           open(p, 'w').write(s)
-          print('fallback_providers: ditulis ulang (ACP deepseek, ACP glm)')
+          print('fallback_providers: ditulis ulang (ACP glm)')
           PYEOF
           hermes fallback list || true
 
@@ -189,6 +186,30 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
           hermes pairing approve telegram "$PAIRING_CODE"
+
+      # 3e. Diagnostik model Gemini (TIDAK menggagalkan run): sesi #15
+      #     membuktikan gemini-3.5-flash-lite ditolak HTTP 404 oleh Google
+      #     untuk key/project ini. Langkah ini menembak langsung API
+      #     Gemini dari runner untuk sederet ID kandidat (GEMINI-CURL)
+      #     lalu mencoba dua ID Lite lewat Hermes sendiri (GEMINI-CHAT),
+      #     supaya ID yang dipromosikan nanti terbukti, bukan tebakan.
+      - name: Diagnostik model Gemini (diagnostik)
+        continue-on-error: true
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+          set -a; [ -f ~/.hermes/.env ] && . ~/.hermes/.env; set +a
+          for M in gemini-3.5-flash-lite gemini-3.1-flash-lite gemini-3.8-flash gemini-3.5-flash gemini-2.5-flash-lite gemini-2.5-flash; do
+            CODE=$(curl -s -o /tmp/gresp.json -w "%{http_code}" -m 30 -X POST "https://generativelanguage.googleapis.com/v1beta/models/$M:generateContent" -H "x-goog-api-key: $GEMINI_API_KEY" -H "Content-Type: application/json" -d '{"contents":[{"parts":[{"text":"Berapa hasil 37 tambah 5? Balas hanya angkanya saja."}]}],"generationConfig":{"maxOutputTokens":256}}')
+            echo "GEMINI-CURL $M: HTTP $CODE $(head -c 220 /tmp/gresp.json | tr '\n' ' ')"
+          done
+          for M in gemini-3.5-flash-lite gemini-3.1-flash-lite; do
+            OUT=$(timeout 90 hermes chat -q "Berapa hasil 37 tambah 5? Balas hanya angkanya saja." -Q --provider gemini --model "$M" --max-turns 2 2>&1 || true)
+            if echo "$OUT" | grep -qx "42"; then
+              echo "GEMINI-CHAT $M: LULUS"
+            else
+              echo "GEMINI-CHAT $M: GAGAL :: $(echo "$OUT" | tail -2 | tr '\n' ' ')"
+            fi
+          done
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
