@@ -11,6 +11,11 @@ name: Hermes Agent 24/7
 
 on:
   workflow_dispatch:
+    inputs:
+      pairing_code:
+        description: "Kode pairing Telegram sekali pakai (dari pesan bot saat /start). Kosongkan untuk sesi biasa."
+        required: false
+        default: ""
 
 permissions:
   actions: write
@@ -119,6 +124,20 @@ jobs:
           hermes config set model.api_mode "" || true
           echo "== model yang berlaku =="
           grep -A 6 '^model:' ~/.hermes/config.yaml || true
+
+      # 3d. Setujui pairing Telegram (hanya bila dispatch membawa kode):
+      #     bot Hermes memakai gerbang pairing, bukan allowlist statis.
+      #     Permintaan pairing tersimpan di state (folder pairing/) dan ikut
+      #     backup/restore, jadi persetujuan di sini berlaku seterusnya.
+      #     Kode sekali pakai dan kedaluwarsa 1 jam, dikirim lewat input
+      #     dispatch, tidak pernah ditulis ke repo.
+      - name: Setujui pairing Telegram (bila ada kode)
+        if: inputs.pairing_code != ''
+        env:
+          PAIRING_CODE: ${{ inputs.pairing_code }}
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+          hermes pairing approve telegram "$PAIRING_CODE"
 
       # 4. Smoke test model: Hermes wajib menjawab lewat OpenCode.
       #    Gagal di sini = run berhenti; watchdog akan mencoba lagi berkala.
