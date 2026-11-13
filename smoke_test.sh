@@ -22,10 +22,15 @@ try_cmd() {
   return 1
 }
 
+# Jalur utama: provider ACP OpenCode (free tier dari dalam OpenCode CLI).
+try_cmd "chat opencode-free-acp big-pickle" \
+  hermes chat --provider opencode-free-acp --model opencode/big-pickle && exit 0
+try_cmd "chat opencode-free-acp deepseek-flash-free" \
+  hermes chat --provider opencode-free-acp --model opencode/deepseek-v4.1-flash-free && exit 0
+# Cadangan generik bila bentuk perintah berubah antar versi Hermes.
 try_cmd "hermes run"        hermes run        && exit 0
 try_cmd "hermes chat -q"    hermes chat -q    && exit 0
-try_cmd "hermes -p"         hermes -p         && exit 0
 
-echo "Smoke test GAGAL: tidak ada bentuk perintah yang menjawab SMOKE_OK."
-echo "Periksa konfigurasi provider/model di ~/.hermes/config.yaml dan kunci OPENCODE_API_KEY."
+echo "Smoke test GAGAL: tidak ada jalur model yang menjawab SMOKE_OK."
+echo "Periksa: plugin opencode-free-acp terpasang? OpenCode CLI bisa jalan? Konfigurasi di ~/.hermes/config.yaml."
 exit 1

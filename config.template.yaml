@@ -2,19 +2,25 @@
 # saat restore dari Supabase masih kosong; run berikutnya memakai konfigurasi
 # dari restore).
 #
-# CATATAN UJI PERTAMA: nama kunci persisnya mengikuti dokumentasi Hermes dan
-# dikunci setelah uji pertama. Nilai yang wajib benar isinya:
-#   provider : OpenCode (endpoint Zen, gaya OpenAI-compatible)
-#   base_url : https://opencode.ai/zen/v1
-#   model    : opencode/big-pickle
-#   api_key  : dari Secret OPENCODE_API_KEY (jangan tulis nilai asli di repo)
+# JALUR MODEL UTAMA (keputusan Awan 13 Nov, diverifikasi Lyra dari dokumentasi
+# komunitas Hermes): Hermes menjalankan OpenCode CLI ASLI sebagai subprocess
+# lewat ACP (plugin "OpenCode Free ACP", cryptobredda/hermes-opencode-free-acp,
+# butuh Hermes >= 0.22.2). Prinsipnya sama dengan Paperclip: panggilan model
+# berasal dari dalam OpenCode, jadi free tier bawaan OpenCode bisa dipakai
+# TANPA API key. Provider bawaan Hermes yang menembak endpoint Zen langsung
+# (opencode-free HTTP) sudah ditolak OpenCode sejak Sep 2026
+# (FreeTierError), jangan dipakai.
+#   provider : opencode-free-acp
+#   model    : opencode/big-pickle (cadangan: opencode/deepseek-v4.1-flash-free)
+# Smoke test membuktikan model mana yang menjawab; hasilnya dicatat di log run.
+#
+# RENCANA B (hanya bila jalur ACP gagal total): provider Zen langsung dengan
+# Secret OPENCODE_API_KEY. Secret itu sengaja dibiarkan placeholder sekarang.
 # Gateway Telegram aktif bila Secret TELEGRAM_BOT_TOKEN terisi.
 
 model:
-  provider: opencode
-  base_url: https://opencode.ai/zen/v1
+  provider: opencode-free-acp
   model: opencode/big-pickle
-  api_key: "__ISI_DARI_SECRET_OPENCODE_API_KEY__"
 
 gateway:
   telegram:

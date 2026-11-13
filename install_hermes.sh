@@ -16,4 +16,10 @@ python3 -m pip install --user --upgrade hermes-agent
 export PATH="$HOME/.local/bin:$PATH"
 hermes --version || true
 
+echo "== Pasang plugin OpenCode Free ACP =="
+# Menjalankan OpenCode CLI asli lewat ACP supaya free tier bawaan OpenCode
+# bisa dipakai Hermes tanpa API key (prinsip yang sama dengan Paperclip).
+hermes plugins install cryptobredda/hermes-opencode-free-acp --enable \
+  || echo "PERINGATAN: pasang plugin gagal, smoke test akan menentukan."
+
 echo "Pemasangan selesai."

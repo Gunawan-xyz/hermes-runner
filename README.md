@@ -31,7 +31,7 @@ keadaan terakhir di mesin yang selalu baru.
 |---|---|
 | `SUPABASE_URL` | URL proyek Supabase tempat bucket `hermes-data` |
 | `SUPABASE_KEY` | Kunci akses Supabase (service role) |
-| `OPENCODE_API_KEY` | Kunci OpenCode Zen untuk model Hermes |
+| `OPENCODE_API_KEY` | Rencana B saja: kunci OpenCode Zen bila jalur ACP gagal (boleh tetap placeholder) |
 | `TELEGRAM_BOT_TOKEN` | Token bot Telegram untuk gateway (opsional, untuk chat dari HP) |
 | `TELEGRAM_USER_ID` | ID numerik Telegram pemilik; hanya user ini yang dilayani bot |
 | `TAILSCALE_AUTHKEY` | Auth key Tailscale untuk runner (disarankan reusable + ephemeral) |
