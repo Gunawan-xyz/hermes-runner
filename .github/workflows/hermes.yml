@@ -129,12 +129,15 @@ jobs:
       - name: Jalankan gateway Hermes
         run: |
           # Installer atau langkah lain bisa sudah menyalakan gateway host
-          # dengan config lama (kejadian run uji keenam: gateway lain sudah
-          # melayani profil default lebih dulu). Restart memaksa gateway
-          # membaca config dan env sesi ini; start sesudahnya hanya berjaga
-          # bila belum ada gateway yang jalan.
-          hermes -p default gateway restart || true
-          sleep 3
+          # lebih dulu (kejadian run uji keenam). Gateway lama dihentikan
+          # agar yang melayani adalah gateway dengan config + env sesi ini.
+          # JANGAN pakai `gateway restart` di sini: pada sesi rantai pertama
+          # perintah itu tidak kembali (kemungkinan ia sendiri yang jadi
+          # proses gateway di depan) dan menggantung langkah ini belasan
+          # menit. Semua perintah kendali dibungkus timeout supaya langkah
+          # ini selalu selesai; start nohup di bawah adalah jalurnya.
+          timeout 30 hermes -p default gateway stop || true
+          sleep 2
           nohup hermes gateway > "$HOME/hermes-gateway.log" 2>&1 &
           echo "Gateway dimulai, pid $!"
           sleep 10
