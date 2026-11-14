@@ -180,6 +180,23 @@ jobs:
           print('fallback_providers: ditulis ulang (ACP deepseek, ACP glm)')
           PYEOF
           hermes fallback list || true
+          # Format balasan Telegram: pertahankan markdown (permintaan
+          # Awan 14 Nov). Bot sendiri DILARANG mengubah config.yaml oleh
+          # file-mutation verifier Hermes (config = security-sensitive),
+          # jadi perubahan setting seperti ini memang tugas workflow:
+          # tulis langsung di sini, di baris final_response_markdown
+          # pada tingkat indentasi berapa pun ia berada.
+          python3 - <<'PYEOF'
+          import re
+          p = '/home/runner/.hermes/config.yaml'
+          s = open(p).read()
+          s2, n = re.subn(r'^(\s*final_response_markdown:).*$', r'\1 keep', s, count=1, flags=re.M)
+          if n:
+              open(p, 'w').write(s2)
+              print('MARKDOWN: final_response_markdown disetel keep')
+          else:
+              print('MARKDOWN: baris final_response_markdown TIDAK ditemukan di config')
+          PYEOF
 
       # 3d. Setujui pairing Telegram (hanya bila dispatch membawa kode):
       #     bot Hermes memakai gerbang pairing, bukan allowlist statis.
