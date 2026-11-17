@@ -35,6 +35,7 @@ jobs:
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ZRO_API_KEY: ${{ secrets.ZRO_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
       TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
@@ -110,9 +111,12 @@ jobs:
 
       # 3c. Terapkan konfigurasi model di SETIAP sesi (bukan cuma seed),
       #     supaya sesi selalu konvergen walau state restore berasal dari
-      #     konfigurasi lama. Utama: provider gemini, model
-      #     gemini-3.5-flash-lite (pilihan Awan 13 Nov; jatah gratis
-      #     500 request/hari). PELAJARAN sesi #15/#16: gateway membaca
+      #     konfigurasi lama. Utama: provider custom (Zro,
+      #     https://zro.moonmath.ai/v1), model deepseek-v4.1-flash
+      #     (pilihan Awan 17 Nov). Gemini turun jadi fallback pertama;
+      #     bila secret ZRO_API_KEY kosong, utama tetap Gemini seperti
+      #     sebelumnya (gemini-3.5-flash-lite, pilihan Awan 13 Nov;
+      #     jatah gratis 500 request/hari). PELAJARAN sesi #15/#16: gateway membaca
       #     nama model utama dari kolom model.default, sedangkan
       #     `config set model.model` TIDAK mengubah kolom itu. Sesi #15
       #     gagal 404 karena nama lama (opencode/deepseek...) ikut
@@ -122,10 +126,21 @@ jobs:
       - name: Terapkan konfigurasi model
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-          hermes config set model.provider gemini
-          hermes config set model.model gemini-3.5-flash-lite
-          hermes config set model.default gemini-3.5-flash-lite
-          hermes config set model.base_url "" || true
+          if [ -n "$ZRO_API_KEY" ] && [ "$ZRO_API_KEY" != "BELUM_DIISI" ]; then
+            hermes config set model.provider custom
+            hermes config set model.model deepseek-v4.1-flash
+            hermes config set model.default deepseek-v4.1-flash
+            hermes config set model.base_url "https://zro.moonmath.ai/v1"
+            hermes config set model.api_key "$ZRO_API_KEY"
+            echo "Utama: Zro deepseek-v4.1-flash (provider custom)"
+          else
+            echo "ZRO_API_KEY kosong/placeholder: utama tetap Gemini"
+            hermes config set model.provider gemini
+            hermes config set model.model gemini-3.5-flash-lite
+            hermes config set model.default gemini-3.5-flash-lite
+            hermes config set model.base_url "" || true
+            hermes config set model.api_key "" || true
+          fi
           hermes config set model.api_mode "" || true
           echo "== model yang berlaku =="
           grep -A 6 '^model:' ~/.hermes/config.yaml || true
@@ -149,9 +164,10 @@ jobs:
           else
             echo "GEMINI_API_KEY kosong/placeholder, dilewati"
           fi
-          # Rantai fallback di bawah Gemini (dok resmi Hermes:
-          # fallback_providers di config.yaml): dua-duanya jalur ACP yang
-          # terbukti, 1) deepseek-v4.1-flash-free, 2) glm-5.3-flash-free.
+          # Rantai fallback di bawah Zro (dok resmi Hermes:
+          # fallback_providers di config.yaml): 1) Gemini
+          # gemini-3.5-flash-lite (utama lama yang terbukti), 2) jalur ACP
+          # deepseek-v4.1-flash-free, 3) jalur ACP glm-5.3-flash-free.
           # opencode-zen DICABUT dari rantai: tidak pernah menjawab
           # (429 dari VM Lyra, hang 120 dan 180 detik dari runner, sesi
           # branch api-key-saja 13 Nov). Blok fallback lama dari state
@@ -171,13 +187,15 @@ jobs:
               out.append(lines[i])
               i += 1
           block = ("fallback_providers:\n"
+                   "  - provider: gemini\n"
+                   "    model: gemini-3.5-flash-lite\n"
                    "  - provider: opencode-free-acp\n"
                    "    model: opencode/deepseek-v4.1-flash-free\n"
                    "  - provider: opencode-free-acp\n"
                    "    model: opencode/glm-5.3-flash-free\n")
           s = ''.join(out).rstrip('\n') + '\n\n' + block
           open(p, 'w').write(s)
-          print('fallback_providers: ditulis ulang (ACP deepseek, ACP glm)')
+          print('fallback_providers: ditulis ulang (Gemini, ACP deepseek, ACP glm)')
           PYEOF
           hermes fallback list || true
           # Format balasan Telegram: pertahankan markdown (permintaan
@@ -211,6 +229,20 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
           hermes pairing approve telegram "$PAIRING_CODE"
+
+      # Diagnostik model Zro (TIDAK menggagalkan run): alarm dini jalur
+      #     utama baru (17 Nov). Bukti keras jalur config tetap di smoke
+      #     test langkah 4, kandidat pertama "config saja" persis memakai
+      #     provider + model yang diterapkan langkah 3c.
+      - name: Diagnostik model Zro (diagnostik)
+        continue-on-error: true
+        run: |
+          if [ -n "$ZRO_API_KEY" ] && [ "$ZRO_API_KEY" != "BELUM_DIISI" ]; then
+            CODE=$(curl -s -o /tmp/zresp.json -w "%{http_code}" -m 30 -X POST "https://zro.moonmath.ai/v1/chat/completions" -H "Authorization: Bearer $ZRO_API_KEY" -H "Content-Type: application/json" -d '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"Berapa hasil 37 tambah 5? Balas hanya angkanya saja."}],"max_tokens":64}')
+            echo "ZRO-CURL deepseek-v4.1-flash: HTTP $CODE $(head -c 220 /tmp/zresp.json | tr '\n' ' ')"
+          else
+            echo "ZRO-CURL dilewati: ZRO_API_KEY kosong/placeholder"
+          fi
 
       # 3e. Diagnostik model Gemini (TIDAK menggagalkan run): pantau
       #     ketersediaan ID model Gemini dari runner. Ditulis 13 Nov
